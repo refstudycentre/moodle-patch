@@ -372,8 +372,14 @@ class manager {
         // Set configuration.
         session_name($sessionname);
 
+        $cookielifetime = 0;
+
+        if (isset($CFG->cookielifetime)) {
+            $cookietimeout = $CFG->cookielifetime;
+        }
+
         $sessionoptions = [
-            'lifetime' => 0,
+            'lifetime' => $cookielifetime,
             'path' => $CFG->sessioncookiepath,
             'domain' => $CFG->sessioncookiedomain,
             'secure' => $cookiesecure,
