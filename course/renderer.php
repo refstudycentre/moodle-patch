@@ -2019,6 +2019,7 @@ class core_course_renderer extends plugin_renderer_base {
      */
     public function frontpage_available_courses() {
         global $CFG;
+        global $SESSION;
 
         $chelper = new coursecat_helper();
         $chelper->set_show_courses(self::COURSECAT_SHOW_COURSES_EXPANDED)->
@@ -2031,6 +2032,19 @@ class core_course_renderer extends plugin_renderer_base {
         $chelper->set_attributes(array('class' => 'frontpage-course-list-all'));
         $courses = core_course_category::top()->get_courses($chelper->get_courses_display_options());
         $totalcount = core_course_category::top()->get_courses_count($chelper->get_courses_display_options());
+
+        $lang = $SESSION->lang;
+        if (!empty($CFG->language_categories) and !empty($lang) and isset($CFG->language_categories[$lang])) {
+            try {
+                $courses = core_course_category::get($CFG->language_categories[$lang])->get_courses($chelper->get_courses_display_options());
+                $totalcount = core_course_category::get($CFG->language_categories[$lang])->get_courses_count($chelper->get_courses_display_options());
+            } catch (moodle_exception $e) {
+                // Silently fail
+            }
+        } else {
+            echo "<b>INFO:</b> <i>No courses for this language, showing all available courses</i>";
+        }
+
         if (!$totalcount && !$this->page->user_is_editing() && has_capability('moodle/course:create', context_system::instance())) {
             // Print link to create a new course, for the 1st available category.
             return $this->add_new_course_button();
