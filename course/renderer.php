@@ -2033,7 +2033,7 @@ class core_course_renderer extends plugin_renderer_base {
         $courses = core_course_category::top()->get_courses($chelper->get_courses_display_options());
         $totalcount = core_course_category::top()->get_courses_count($chelper->get_courses_display_options());
 
-        $lang = $SESSION->lang;
+        $lang = current_language();
         if (!empty($CFG->language_categories) and !empty($lang) and isset($CFG->language_categories[$lang])) {
             try {
                 $courses = core_course_category::get($CFG->language_categories[$lang])->get_courses($chelper->get_courses_display_options());
