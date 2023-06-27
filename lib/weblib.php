@@ -91,13 +91,18 @@ define('URL_MATCH_EXACT', 2);
  * @return string
  */
 function s($var) {
-
     if ($var === false) {
         return '0';
     }
 
-    return preg_replace('/&amp;#(\d+|x[0-9a-f]+);/i', '&#$1;',
-            htmlspecialchars($var, ENT_QUOTES | ENT_HTML401 | ENT_SUBSTITUTE));
+    if ($var === null || $var === '') {
+        return '';
+    }
+
+    return preg_replace(
+        '/&amp;#(\d+|x[0-9a-f]+);/i', '&#$1;',
+        htmlspecialchars($var, ENT_QUOTES | ENT_HTML401 | ENT_SUBSTITUTE)
+    );
 }
 
 /**
@@ -148,6 +153,9 @@ function addslashes_js($var) {
  * @return string The remaining URL.
  */
 function strip_querystring($url) {
+    if ($url === null || $url === '') {
+        return '';
+    }
 
     if ($commapos = strpos($url, '?')) {
         return substr($url, 0, $commapos);
@@ -336,6 +344,7 @@ class moodle_url {
             $this->anchor = $url->anchor;
 
         } else {
+            $url = $url ?? '';
             // Detect if anchor used.
             $apos = strpos($url, '#');
             if ($apos !== false) {
@@ -526,6 +535,27 @@ class moodle_url {
         } else {
             return implode('&', $arr);
         }
+    }
+
+    /**
+     * Get the url params as an array of key => value pairs.
+     *
+     * This helps in handling cases where url params contain arrays.
+     *
+     * @return array params array for templates.
+     */
+    public function export_params_for_template(): array {
+        $data = [];
+        foreach ($this->params as $key => $val) {
+            if (is_array($val)) {
+                foreach ($val as $index => $value) {
+                    $data[] = ['name' => $key.'['.$index.']', 'value' => $value];
+                }
+            } else {
+                $data[] = ['name' => $key, 'value' => $val];
+            }
+        }
+        return $data;
     }
 
     /**
@@ -1115,7 +1145,7 @@ function validate_email($address) {
 
     require_once("{$CFG->libdir}/phpmailer/moodle_phpmailer.php");
 
-    return moodle_phpmailer::validateAddress($address) && !preg_match('/[<>]/', $address);
+    return moodle_phpmailer::validateAddress($address ?? '') && !preg_match('/[<>]/', $address);
 }
 
 /**
@@ -1302,9 +1332,15 @@ function format_text($text, $format = FORMAT_MOODLE, $options = null, $courseidd
 
     switch ($format) {
         case FORMAT_HTML:
+            $filteroptions['stage'] = 'pre_format';
+            $text = $filtermanager->filter_text($text, $context, $filteroptions);
+            // Text is already in HTML format, so just continue to the next filtering stage.
+            $filteroptions['stage'] = 'pre_clean';
+            $text = $filtermanager->filter_text($text, $context, $filteroptions);
             if (!$options['noclean']) {
                 $text = clean_text($text, FORMAT_HTML, $options);
             }
+            $filteroptions['stage'] = 'post_clean';
             $text = $filtermanager->filter_text($text, $context, $filteroptions);
             break;
 
@@ -1324,17 +1360,27 @@ function format_text($text, $format = FORMAT_MOODLE, $options = null, $courseidd
             break;
 
         case FORMAT_MARKDOWN:
+            $filteroptions['stage'] = 'pre_format';
+            $text = $filtermanager->filter_text($text, $context, $filteroptions);
             $text = markdown_to_html($text);
+            $filteroptions['stage'] = 'pre_clean';
+            $text = $filtermanager->filter_text($text, $context, $filteroptions);
             // The markdown parser does not strip dangerous html so we need to clean it, even if noclean is set to true.
             $text = clean_text($text, FORMAT_HTML, $options);
+            $filteroptions['stage'] = 'post_clean';
             $text = $filtermanager->filter_text($text, $context, $filteroptions);
             break;
 
         default:  // FORMAT_MOODLE or anything else.
+            $filteroptions['stage'] = 'pre_format';
+            $text = $filtermanager->filter_text($text, $context, $filteroptions);
             $text = text_to_html($text, null, $options['para'], $options['newlines']);
+            $filteroptions['stage'] = 'pre_clean';
+            $text = $filtermanager->filter_text($text, $context, $filteroptions);
             if (!$options['noclean']) {
                 $text = clean_text($text, FORMAT_HTML, $options);
             }
+            $filteroptions['stage'] = 'post_clean';
             $text = $filtermanager->filter_text($text, $context, $filteroptions);
             break;
     }
@@ -1528,7 +1574,7 @@ function format_string($string, $striplinks = true, $options = null) {
  * @return string
  */
 function replace_ampersands_not_followed_by_entity($string) {
-    return preg_replace("/\&(?![a-zA-Z0-9#]{1,8};)/", "&amp;", $string);
+    return preg_replace("/\&(?![a-zA-Z0-9#]{1,8};)/", "&amp;", $string ?? '');
 }
 
 /**
@@ -1831,7 +1877,7 @@ function purify_html($text, $options = array()) {
         $config = HTMLPurifier_Config::createDefault();
 
         $config->set('HTML.DefinitionID', 'moodlehtml');
-        $config->set('HTML.DefinitionRev', 6);
+        $config->set('HTML.DefinitionRev', 7);
         $config->set('Cache.SerializerPath', $cachedir);
         $config->set('Cache.SerializerPermissions', $CFG->directorypermissions);
         $config->set('Core.NormalizeNewlines', false);
@@ -1873,7 +1919,7 @@ function purify_html($text, $options = array()) {
 
             // Media elements.
             // https://html.spec.whatwg.org/#the-video-element
-            $def->addElement('video', 'Block', 'Optional: #PCDATA | Flow | source | track', 'Common', [
+            $def->addElement('video', 'Inline', 'Optional: #PCDATA | Flow | source | track', 'Common', [
                 'src' => 'URI',
                 'crossorigin' => 'Enum#anonymous,use-credentials',
                 'poster' => 'URI',
@@ -1887,7 +1933,7 @@ function purify_html($text, $options = array()) {
                 'height' => 'Length',
             ]);
             // https://html.spec.whatwg.org/#the-audio-element
-            $def->addElement('audio', 'Block', 'Optional: #PCDATA | Flow | source | track', 'Common', [
+            $def->addElement('audio', 'Inline', 'Optional: #PCDATA | Flow | source | track', 'Common', [
                 'src' => 'URI',
                 'crossorigin' => 'Enum#anonymous,use-credentials',
                 'preload' => 'Enum#auto,metadata,none',
@@ -2245,7 +2291,7 @@ function get_html_lang($dir = false) {
     global $CFG;
 
     $currentlang = current_language();
-    if ($currentlang !== $CFG->lang && !get_string_manager()->translation_exists($currentlang)) {
+    if (isset($CFG->lang) && $currentlang !== $CFG->lang && !get_string_manager()->translation_exists($currentlang)) {
         // Use the default site language when the current language is not available.
         $currentlang = $CFG->lang;
         // Fix the current language.

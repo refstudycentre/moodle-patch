@@ -1318,8 +1318,9 @@ function fix_utf8($value) {
             // Shortcut.
             return $value;
         }
-        // No null bytes expected in our data, so let's remove it.
-        $value = str_replace("\0", '', $value);
+
+        // Remove null bytes or invalid Unicode sequences from value.
+        $value = str_replace(["\0", "\xef\xbf\xbe", "\xef\xbf\xbf"], '', $value);
 
         // Note: this duplicates min_fix_utf8() intentionally.
         static $buggyiconv = null;
@@ -2362,18 +2363,6 @@ function userdate_htmltime($date, $format = '', $timezone = 99, $fixday = true, 
  * @since Moodle 2.3.3
  */
 function date_format_string($date, $format, $tz = 99) {
-    global $CFG;
-
-    $localewincharset = null;
-    // Get the calendar type user is using.
-    if ($CFG->ostype == 'WINDOWS') {
-        $calendartype = \core_calendar\type_factory::get_calendar_instance();
-        $localewincharset = $calendartype->locale_win_charset();
-    }
-
-    if ($localewincharset) {
-        $format = core_text::convert($format, 'utf-8', $localewincharset);
-    }
 
     date_default_timezone_set(core_date::get_user_timezone($tz));
 
@@ -2390,10 +2379,6 @@ function date_format_string($date, $format, $tz = 99) {
 
     $datestring = core_date::strftime($format, $date);
     core_date::set_default_server_timezone();
-
-    if ($localewincharset) {
-        $datestring = core_text::convert($datestring, $localewincharset, 'utf-8');
-    }
 
     return $datestring;
 }
@@ -5697,6 +5682,10 @@ function reset_course_userdata($data) {
             // Update calendar events for all modules.
             course_module_bulk_update_calendar_events($modname, $data->courseid);
         }
+        // Purge the course cache after resetting course start date. MDL-76936
+        if ($data->timeshift) {
+            course_modinfo::purge_course_cache($data->courseid);
+        }
     }
 
     // Mention unsupported mods.
@@ -8402,7 +8391,7 @@ function count_words($string) {
                 </                              # Start of close tag.
                 (?!                             # Do not match any of these specific close tag names.
                     a> | b> | del> | em> | i> |
-                    ins> | s> | small> |
+                    ins> | s> | small> | span> |
                     strong> | sub> | sup> | u>
                 )
                 \w+                             # But, apart from those execptions, match any tag name.
@@ -9061,11 +9050,12 @@ function make_unique_id_code($extra = '') {
  *
  * @param string $addr    The address you are checking
  * @param string $subnetstr    The string of subnet addresses
+ * @param bool $checkallzeros    The state to whether check for 0.0.0.0
  * @return bool
  */
-function address_in_subnet($addr, $subnetstr) {
+function address_in_subnet($addr, $subnetstr, $checkallzeros = false) {
 
-    if ($addr == '0.0.0.0') {
+    if ($addr == '0.0.0.0' && !$checkallzeros) {
         return false;
     }
     $subnets = explode(',', $subnetstr);
